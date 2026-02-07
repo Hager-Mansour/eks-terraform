@@ -6,9 +6,10 @@
   command: helm repo update
   changed_when: false
 
-- name: Install Kyverno
+- name: Install Kyverno (CI safe)
   command: >
     helm upgrade --install kyverno kyverno/kyverno
     --namespace kyverno
     --create-namespace
+    --no-hooks
   changed_when: false
