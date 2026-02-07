@@ -4,15 +4,11 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
-
-env:
-  AWS_REGION: us-east-1
-  TF_VERSION: 1.5.0
 
 jobs:
 
@@ -20,7 +16,6 @@ jobs:
 # 1️⃣ Validation
 # =========================
   validation:
-    name: Validation - Tools Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -28,8 +23,6 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
 
       - name: Check Terraform
         run: terraform version
@@ -41,10 +34,9 @@ jobs:
         run: kubectl version --client
 
 # =========================
-# 2️⃣ Security Scan (Informational)
+# 2️⃣ Security Scan
 # =========================
   security_scan:
-    name: Security Scan - Informational
     runs-on: ubuntu-latest
     needs: validation
     steps:
@@ -54,51 +46,42 @@ jobs:
       - name: Install Checkov
         run: pip install checkov
 
-      - name: Run Checkov (Informational)
-        run: |
-          echo "Running Checkov in informational mode..."
-          checkov -d . || true
+      - name: Run Checkov
+        run: checkov -d . --download-external-modules
 
       - name: Install tfsec
         run: |
           curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
 
-      - name: Run tfsec (Informational)
-        run: |
-          echo "Running tfsec in informational mode..."
-          tfsec . || true
+      - name: Run tfsec
+        run: tfsec .
 
 # =========================
 # 3️⃣ Terraform Plan
 # =========================
   terraform_plan:
-    name: Terraform Plan
     runs-on: ubuntu-latest
     needs: security_scan
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 🔑 AWS Credentials (IMPORTANT)
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: terraform init
 
       - name: Terraform Plan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: terraform plan -out=tfplan
 
-      - name: Upload Terraform Plan Artifact
+      - name: Upload Terraform Plan
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
@@ -108,33 +91,23 @@ jobs:
 # 4️⃣ Manual Approval
 # =========================
   approval:
-    name: Manual Approval
     runs-on: ubuntu-latest
     needs: terraform_plan
     environment:
       name: production
     steps:
       - name: Waiting for approval
-        run: echo "Waiting for manual approval to proceed with Terraform Apply..."
+        run: echo "Waiting for manual approval..."
 
 # =========================
 # 5️⃣ Terraform Apply
 # =========================
   terraform_apply:
-    name: Terraform Apply
     runs-on: ubuntu-latest
     needs: approval
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      # 🔑 AWS Credentials (IMPORTANT)
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
 
       - name: Download Terraform Plan
         uses: actions/download-artifact@v4
@@ -143,20 +116,23 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: terraform init
 
       - name: Terraform Apply
-        run: terraform apply tfplan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: terraform apply -auto-approve tfplan
 
 # =========================
 # 6️⃣ Ansible Configuration
 # =========================
   ansible_config:
-    name: Ansible Configuration
     runs-on: ubuntu-latest
     needs: terraform_apply
     steps:
@@ -168,14 +144,24 @@ jobs:
           sudo apt update
           sudo apt install -y ansible
 
+      - name: Configure kubeconfig
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws eks update-kubeconfig \
+            --region us-east-1 \
+            --name demo-eks
+
       - name: Run Ansible Playbook
-        run: ansible-playbook playbooks/install-addons.yml
+        run: |
+          ansible-playbook playbooks/install-addons.yml \
+            -e "ansible_roles_path=playbooks/roles"
 
 # =========================
 # 7️⃣ Health Check
 # =========================
   health_check:
-    name: Kubernetes Health Check
     runs-on: ubuntu-latest
     needs: ansible_config
     steps:
