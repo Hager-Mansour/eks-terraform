@@ -1,35 +1,160 @@
-name: Terraform EKS Deploy
+name: EKS Terraform Pipeline
 
 on:
   push:
     branches:
       - main
+  pull_request:
 
 env:
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_REGION: us-east-1
+  TF_VERSION: 1.5.0
 
 jobs:
-  terraform:
-    name: Terraform Init and Apply
-    runs-on: ubuntu-latest
 
+# =========================
+# 1️⃣ Validation Job
+# =========================
+  validation:
+    name: Validation - Tools Check
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Check kubectl
+        run: kubectl version --client
+
+      - name: Check AWS CLI
+        run: aws --version
+
+      - name: Check Terraform
+        run: terraform version
+
+# =========================
+# 2️⃣ Security Scan Job
+# =========================
+  security_scan:
+    name: Security Scan - Terraform Code
+    runs-on: ubuntu-latest
+    needs: validation
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Run Checkov
+        run: checkov -d .
+
+      - name: Install tfsec
+        run: |
+          curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+
+      - name: Run tfsec
+        run: tfsec .
+
+# =========================
+# 3️⃣ Terraform Plan Job
+# =========================
+  terraform_plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: security_scan
+    steps:
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.5.0
+          terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
-        run: |
-          terraform init \
-            -backend-config="bucket=hager-terraform-state-bucket-123" \
-            -backend-config="key=eks/terraform.tfstate" \
-            -backend-config="region=us-east-1"
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      - name: Upload Terraform Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: tfplan
+
+# =========================
+# 4️⃣ Manual Approval Job
+# =========================
+  approval:
+    name: Manual Approval
+    runs-on: ubuntu-latest
+    needs: terraform_plan
+    environment:
+      name: production
+    steps:
+      - name: Waiting for approval
+        run: echo "Waiting for manual approval before apply..."
+
+# =========================
+# 5️⃣ Terraform Apply Job
+# =========================
+  terraform_apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: approval
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve
+        run: terraform apply tfplan
+
+# =========================
+# 6️⃣ Ansible Configuration Job
+# =========================
+  ansible_config:
+    name: Ansible Configuration
+    runs-on: ubuntu-latest
+    needs: terraform_apply
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          sudo apt update
+          sudo apt install -y ansible
+
+      - name: Run Ansible Playbook
+        run: ansible-playbook playbooks/install-addons.yml
+
+# =========================
+# 7️⃣ Health Check Job
+# =========================
+  health_check:
+    name: Kubernetes Health Check
+    runs-on: ubuntu-latest
+    needs: ansible_config
+    steps:
+      - name: Check Nodes
+        run: kubectl get nodes
+
+      - name: Check Pods
+        run: kubectl get pods -A
+
+      - name: Check Services
+        run: kubectl get svc -A
