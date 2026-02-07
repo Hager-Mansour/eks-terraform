@@ -47,7 +47,8 @@ jobs:
         run: pip install checkov
 
       - name: Run Checkov
-        run: checkov -d . --download-external-modules
+        run: |
+          checkov -d . --download-external-modules true
 
       - name: Install tfsec
         run: |
