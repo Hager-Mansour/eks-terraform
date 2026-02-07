@@ -1,0 +1,10 @@
+- name: Install Kubernetes Addons
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  roles:
+    - helm
+    - argocd
+    - kyverno
+    - monitoring
