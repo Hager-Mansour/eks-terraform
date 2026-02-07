@@ -1,25 +1,11 @@
-# =========================
-# Kyverno Helm Repository
-# =========================
 - name: Add Kyverno Helm repository
-  shell: |
-    helm repo add kyverno https://kyverno.github.io/kyverno/ || true
+  shell: helm repo add kyverno https://kyverno.github.io/kyverno/ || true
   changed_when: false
 
 - name: Update Helm repositories
   command: helm repo update
   changed_when: false
 
-# =========================
-# Kyverno Namespace
-# =========================
-- name: Create kyverno namespace
-  command: kubectl create namespace kyverno
-  ignore_errors: true
-
-# =========================
-# Install Kyverno
-# =========================
 - name: Install Kyverno
   command: >
     helm upgrade --install kyverno kyverno/kyverno
