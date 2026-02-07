@@ -1,0 +1,21 @@
+- name: Create monitoring namespace
+  command: kubectl create namespace monitoring
+  ignore_errors: true
+
+- name: Add Helm repos
+  shell: |
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo update
+  changed_when: false
+
+- name: Install Prometheus
+  command: >
+    helm upgrade --install prometheus prometheus-community/prometheus
+    --namespace monitoring
+  changed_when: false
+
+- name: Install Grafana
+  command: >
+    helm upgrade --install grafana prometheus-community/grafana
+    --namespace monitoring
+  changed_when: false
