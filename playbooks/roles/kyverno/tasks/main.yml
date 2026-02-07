@@ -1,0 +1,9 @@
+- name: Create kyverno namespace
+  command: kubectl create namespace kyverno
+  ignore_errors: true
+
+- name: Install Kyverno
+  command: >
+    helm upgrade --install kyverno kyverno/kyverno
+    --namespace kyverno
+  changed_when: false
