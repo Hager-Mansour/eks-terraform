@@ -1,0 +1,9 @@
+- name: Create argocd namespace
+  command: kubectl create namespace argocd
+  ignore_errors: true
+
+- name: Install ArgoCD
+  command: >
+    helm upgrade --install argocd argo/argo-cd
+    --namespace argocd
+  changed_when: false
