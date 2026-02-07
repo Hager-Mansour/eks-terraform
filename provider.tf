@@ -8,7 +8,12 @@ terraform {
     }
   }
 
-  backend "s3" {}
+  backend "s3" {
+    bucket = "hager-terraform-state-bucket-123"
+    key    = "eks/terraform.tfstate"
+    region = "us-east-1"
+
+  }
 }
 
 provider "aws" {
