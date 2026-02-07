@@ -1,43 +1,120 @@
-name: Terraform Destroy EKS
+name: Terraform Destroy Pipeline
 
 on:
-  workflow_dispatch:
-    inputs:
-      confirm:
-        description: "Type DESTROY to confirm"
-        required: true
+  workflow_dispatch:   # تشغيل يدوي فقط (مهم جدًا)
+
+permissions:
+  contents: read
+  id-token: write
 
 env:
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_REGION: us-east-1
+  TF_VERSION: 1.5.0
 
 jobs:
-  destroy:
-    name: Terraform Destroy
+
+# =========================
+# 1️⃣ Validation
+# =========================
+  validation:
+    name: Validation - Tools Check
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check confirmation
-        if: ${{ github.event.inputs.confirm != 'DESTROY' }}
-        run: |
-          echo "❌ You must type DESTROY to run this workflow"
-          exit 1
-
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.5.0
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Check Terraform
+        run: terraform version
+
+      - name: Check AWS CLI
+        run: aws --version
+
+      - name: Check kubectl
+        run: kubectl version --client
+
+# =========================
+# 2️⃣ Terraform Init & Plan Destroy
+# =========================
+  terraform_plan_destroy:
+    name: Terraform Init & Destroy Plan
+    runs-on: ubuntu-latest
+    needs: validation
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
-        run: |
-          terraform init \
-            -backend-config="bucket=hager-terraform-state-bucket-123" \
-            -backend-config="key=eks/terraform.tfstate" \
-            -backend-config="region=us-east-1"
+        run: terraform init
+
+      - name: Terraform Destroy Plan
+        run: terraform plan -destroy -out=tfplan-destroy
+
+      - name: Upload Destroy Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-destroy-plan
+          path: tfplan-destroy
+
+# =========================
+# 3️⃣ Manual Approval
+# =========================
+  approval:
+    name: Manual Approval - Destroy
+    runs-on: ubuntu-latest
+    needs: terraform_plan_destroy
+    environment:
+      name: production
+    steps:
+      - name: Waiting for approval
+        run: echo "Waiting for manual approval before DESTROY..."
+
+# =========================
+# 4️⃣ Terraform Destroy
+# =========================
+  terraform_destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    needs: approval
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download Destroy Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-destroy-plan
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init
 
       - name: Terraform Destroy
-        run: terraform destroy -auto-approve
+        run: terraform apply tfplan-destroy
