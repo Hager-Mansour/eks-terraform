@@ -6,11 +6,10 @@
   command: helm repo update
   changed_when: false
 
-- name: Install ArgoCD (with extended timeout)
+- name: Install ArgoCD (disable hooks for CI)
   command: >
     helm upgrade --install argocd argo/argo-cd
     --namespace argocd
     --create-namespace
-    --wait
-    --timeout 10m
+    --no-hooks
   changed_when: false
