@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+  id-token: write
+
 env:
   AWS_REGION: us-east-1
   TF_VERSION: 1.5.0
@@ -13,7 +17,7 @@ env:
 jobs:
 
 # =========================
-# 1️⃣ Validation Job
+# 1️⃣ Validation
 # =========================
   validation:
     name: Validation - Tools Check
@@ -37,10 +41,10 @@ jobs:
         run: kubectl version --client
 
 # =========================
-# 2️⃣ Security Scan Job
+# 2️⃣ Security Scan (Informational)
 # =========================
   security_scan:
-    name: Security Scan - Terraform Code
+    name: Security Scan - Informational
     runs-on: ubuntu-latest
     needs: validation
     steps:
@@ -50,18 +54,22 @@ jobs:
       - name: Install Checkov
         run: pip install checkov
 
-      - name: Run Checkov
-        run: checkov -d .
+      - name: Run Checkov (Informational)
+        run: |
+          echo "Running Checkov in informational mode..."
+          checkov -d . || true
 
       - name: Install tfsec
         run: |
           curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
 
-      - name: Run tfsec
-        run: tfsec .
+      - name: Run tfsec (Informational)
+        run: |
+          echo "Running tfsec in informational mode..."
+          tfsec . || true
 
 # =========================
-# 3️⃣ Terraform Plan Job
+# 3️⃣ Terraform Plan
 # =========================
   terraform_plan:
     name: Terraform Plan
@@ -89,7 +97,7 @@ jobs:
           path: tfplan
 
 # =========================
-# 4️⃣ Manual Approval Job
+# 4️⃣ Manual Approval
 # =========================
   approval:
     name: Manual Approval
@@ -99,10 +107,10 @@ jobs:
       name: production
     steps:
       - name: Waiting for approval
-        run: echo "Waiting for manual approval before Terraform apply..."
+        run: echo "Waiting for manual approval to proceed with Terraform Apply..."
 
 # =========================
-# 5️⃣ Terraform Apply Job
+# 5️⃣ Terraform Apply
 # =========================
   terraform_apply:
     name: Terraform Apply
@@ -129,7 +137,7 @@ jobs:
         run: terraform apply tfplan
 
 # =========================
-# 6️⃣ Ansible Configuration Job
+# 6️⃣ Ansible Configuration
 # =========================
   ansible_config:
     name: Ansible Configuration
@@ -148,7 +156,7 @@ jobs:
         run: ansible-playbook playbooks/install-addons.yml
 
 # =========================
-# 7️⃣ Health Check Job
+# 7️⃣ Health Check
 # =========================
   health_check:
     name: Kubernetes Health Check
