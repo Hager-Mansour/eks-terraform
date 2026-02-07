@@ -3,7 +3,7 @@ name: Terraform
 on:
   push:
     branches:
-      - master
+      - main
 
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
