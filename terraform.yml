@@ -1,0 +1,75 @@
+name: Terraform
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: 'us-east-1'
+  TF_VERSION: '1.5.0'
+  S3_BUCKET: 'my-terraform-state-bucket' # Ensure this matches your bucket
+  S3_KEY: 'eks-cluster/terraform.tfstate'
+  DYNAMODB_TABLE: 'eks-demo-table'
+
+jobs:
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest # Change to 'self-hosted' if using your own runner
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.S3_BUCKET }}" \
+            -backend-config="key=${{ env.S3_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.DYNAMODB_TABLE }}"
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan -input=false
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: tfplan
+
+  apply:
+    name: Terraform Apply
+    needs: plan
+    runs-on: ubuntu-latest # Change to 'self-hosted' if using your own runner
+    environment: production # Allows for manual approval rules in GitHub Settings
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.S3_BUCKET }}" \
+            -backend-config="key=${{ env.S3_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.DYNAMODB_TABLE }}"
+
+      - name: Terraform Apply
+        run: terraform apply -input=false tfplan
