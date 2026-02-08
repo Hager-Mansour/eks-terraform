@@ -3,8 +3,8 @@ name: Terraform Destroy Pipeline
 on:
   workflow_dispatch:
     inputs:
-      confirm_destroy:
-        description: "Type DESTROY to confirm infrastructure deletion"
+      confirm:
+        description: "Type DESTROY to confirm"
         required: true
 
 permissions:
@@ -23,38 +23,40 @@ jobs:
   validation:
     name: Validation - Tools Check
     runs-on: ubuntu-latest
+
     steps:
-      - name: Validate confirmation
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Validate Terraform
+        run: terraform version
+
+      - name: Validate AWS CLI
+        run: aws --version
+
+      - name: Validate kubectl
+        run: kubectl version --client
+
+      - name: Validate confirmation input
         run: |
-          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
-            echo "❌ Destroy not confirmed"
+          if [ "${{ github.event.inputs.confirm }}" != "DESTROY" ]; then
+            echo "❌ You must type DESTROY to proceed"
             exit 1
           fi
 
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Check Terraform
-        run: terraform version
-
-      - name: Check AWS CLI
-        run: aws --version
-
-      - name: Check kubectl
-        run: kubectl version --client
-
 # =========================
-# 2️⃣ Terraform Init & Destroy Plan
+# 2️⃣ Terraform Init + State Check
 # =========================
-  terraform_plan_destroy:
-    name: Terraform Init & Destroy Plan
+  state_check:
+    name: Terraform Init & State Validation
     runs-on: ubuntu-latest
     needs: validation
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -65,88 +67,6 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Terraform Init (state lock check)
-        run: terraform init -lock-timeout=2m
-
-      - name: Terraform Destroy Plan
-        run: terraform plan -destroy -out=tfplan-destroy
-
-      - name: Upload Destroy Plan
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-destroy-plan
-          path: tfplan-destroy
-
-# =========================
-# 3️⃣ Manual Approval
-# =========================
-  approval:
-    name: Manual Approval - Destroy
-    runs-on: ubuntu-latest
-    needs: terraform_plan_destroy
-    environment:
-      name: production
-    steps:
-      - name: Waiting for approval
-        run: echo "⏸️ Waiting for manual approval before DESTROY..."
-
-# =========================
-# 4️⃣ Cleanup Kubernetes Dependencies
-# =========================
-  k8s_cleanup:
-    name: Kubernetes Cleanup (LoadBalancers / Ingress)
-    runs-on: ubuntu-latest
-    needs: approval
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Update kubeconfig
-        run: |
-          aws eks update-kubeconfig \
-            --region $AWS_REGION \
-            --name demo-eks || true
-
-      - name: Delete Kubernetes LoadBalancers & Ingress
-        run: |
-          kubectl delete svc --all -A || true
-          kubectl delete ingress --all -A || true
-
-# =========================
-# 5️⃣ Terraform Destroy
-# =========================
-  terraform_destroy:
-    name: Terraform Destroy
-    runs-on: ubuntu-latest
-    needs: k8s_cleanup
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Download Destroy Plan
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-destroy-plan
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -154,7 +74,51 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
-        run: terraform init -lock-timeout=2m
+        run: terraform init
+
+      - name: Check Terraform State
+        run: terraform state list || echo "⚠️ No state resources found"
+
+# =========================
+# 3️⃣ Manual Approval
+# =========================
+  approval:
+    name: Manual Approval (Production)
+    runs-on: ubuntu-latest
+    needs: state_check
+    environment:
+      name: production
+
+    steps:
+      - name: Waiting for approval
+        run: echo "⏸️ Waiting for manual approval..."
+
+# =========================
+# 4️⃣ Terraform Destroy
+# =========================
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    needs: approval
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init
 
       - name: Terraform Destroy
-        run: terraform apply tfplan-destroy
+        run: terraform destroy -auto-approve
