@@ -17,6 +17,7 @@ resource "aws_secretsmanager_secret" "db" {
 
 resource "aws_secretsmanager_secret_version" "db" {
   secret_id = aws_secretsmanager_secret.db.id
+
   secret_string = jsonencode({
     username = "appuser"
     password = random_password.db.result
@@ -24,24 +25,61 @@ resource "aws_secretsmanager_secret_version" "db" {
 }
 
 ############################################
-# RDS Module
+# Security Group for RDS
+############################################
+
+resource "aws_security_group" "rds" {
+  name        = "rds-sg"
+  description = "Allow PostgreSQL access from EKS nodes"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    description     = "PostgreSQL from EKS nodes"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [module.eks.node_security_group_id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "rds-sg"
+    Environment = "production"
+  }
+}
+
+############################################
+# RDS Module (PostgreSQL 15)
 ############################################
 
 module "rds" {
   source  = "terraform-aws-modules/rds/aws"
   version = "6.5.0"
 
+  ##########################################
+  # Basic Configuration
+  ##########################################
+
   identifier = "app-db"
 
-  engine            = "postgres"
-  engine_version    = "15"
+  engine         = "postgres"
+  engine_version = "15"
+  family         = "postgres15"   
   instance_class    = "db.t3.micro"
   allocated_storage = 20
 
-  db_name  = "appdb"
+  db_name = "appdb"
+
   username = jsondecode(
     aws_secretsmanager_secret_version.db.secret_string
   )["username"]
+
   password = jsondecode(
     aws_secretsmanager_secret_version.db.secret_string
   )["password"]
@@ -66,7 +104,6 @@ module "rds" {
 
   storage_encrypted   = true
   deletion_protection = false
-
   skip_final_snapshot = true
 
   ##########################################
@@ -77,33 +114,5 @@ module "rds" {
     Name        = "app-rds"
     Environment = "production"
     ManagedBy   = "terraform"
-  }
-}
-
-############################################
-# Security Group for RDS
-############################################
-
-resource "aws_security_group" "rds" {
-  name   = "rds-sg"
-  vpc_id = module.vpc.vpc_id
-
-  ingress {
-    description     = "Allow PostgreSQL from EKS nodes"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [module.eks.node_security_group_id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "rds-sg"
   }
 }
