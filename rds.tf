@@ -51,6 +51,7 @@ resource "aws_security_group" "rds" {
   tags = {
     Name        = "rds-sg"
     Environment = "production"
+    ManagedBy   = "terraform"
   }
 }
 
@@ -70,7 +71,8 @@ module "rds" {
 
   engine         = "postgres"
   engine_version = "15"
-  family         = "postgres15"   
+  family         = "postgres15"   # ⭐ مهم جدًا
+
   instance_class    = "db.t3.micro"
   allocated_storage = 20
 
@@ -87,14 +89,16 @@ module "rds" {
   port = 5432
 
   ##########################################
-  # Networking
+  # Networking 
   ##########################################
+
+  create_db_subnet_group = true
+  db_subnet_group_name  = "app-db-subnet-group"
+  subnet_ids            = module.vpc.private_subnets
 
   vpc_security_group_ids = [
     aws_security_group.rds.id
   ]
-
-  subnet_ids = module.vpc.private_subnets
 
   publicly_accessible = false
 
