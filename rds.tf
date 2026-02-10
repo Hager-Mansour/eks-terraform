@@ -12,7 +12,13 @@ resource "random_password" "db" {
 ############################################
 
 resource "aws_secretsmanager_secret" "db" {
-  name = "rds-db-credentials"
+  name = "rds-db-credentials-${var.environment}"
+
+  tags = {
+    Name        = "rds-db-credentials-${var.environment}"
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "db" {
@@ -50,7 +56,7 @@ resource "aws_security_group" "rds" {
 
   tags = {
     Name        = "rds-sg"
-    Environment = "production"
+    Environment = var.environment
     ManagedBy   = "terraform"
   }
 }
@@ -63,15 +69,11 @@ module "rds" {
   source  = "terraform-aws-modules/rds/aws"
   version = "6.5.0"
 
-  ##########################################
-  # Basic Configuration
-  ##########################################
-
-  identifier = "app-db"
+  identifier = "app-db-${var.environment}"
 
   engine         = "postgres"
   engine_version = "15"
-  family         = "postgres15"   # ⭐ مهم جدًا
+  family         = "postgres15"
 
   instance_class    = "db.t3.micro"
   allocated_storage = 20
@@ -89,12 +91,11 @@ module "rds" {
   port = 5432
 
   ##########################################
-  # Networking 
+  # Networking
   ##########################################
 
   create_db_subnet_group = true
-  db_subnet_group_name  = "app-db-subnet-group"
-  subnet_ids            = module.vpc.private_subnets
+  subnet_ids             = module.vpc.private_subnets
 
   vpc_security_group_ids = [
     aws_security_group.rds.id
@@ -116,7 +117,7 @@ module "rds" {
 
   tags = {
     Name        = "app-rds"
-    Environment = "production"
+    Environment = var.environment
     ManagedBy   = "terraform"
   }
 }
