@@ -23,22 +23,15 @@ jobs:
     name: Validation - Tools Check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Check Terraform
-        run: terraform version
-
-      - name: Check AWS CLI
-        run: aws --version
-
-      - name: Check kubectl
-        run: kubectl version --client
+      - run: terraform version
+      - run: aws --version
+      - run: kubectl version --client
 
 # =========================
 # 2️⃣ Security Scan (Informational)
@@ -48,25 +41,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: validation
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Checkov
-        run: pip install checkov
+      - run: pip install checkov
+      - run: checkov -d . --download-external-modules true || true
 
-      - name: Run Checkov (Informational)
-        run: |
-          echo "Running Checkov in informational mode..."
-          checkov -d . --download-external-modules true || true
-
-      - name: Install tfsec
-        run: |
+      - run: |
           curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
-
-      - name: Run tfsec (Informational)
-        run: |
-          echo "Running tfsec in informational mode..."
-          tfsec . || true
+      - run: tfsec . || true
 
 # =========================
 # 3️⃣ Terraform Plan
@@ -76,27 +58,24 @@ jobs:
     runs-on: ubuntu-latest
     needs: security_scan
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
         run: terraform init
 
+      # ⭐ مهم: من غير || true
       - name: Terraform Plan
-        run: terraform plan -out=tfplan || true
-
+        run: terraform plan -out=tfplan
 
       - name: Upload Terraform Plan Artifact
         uses: actions/upload-artifact@v4
@@ -114,8 +93,7 @@ jobs:
     environment:
       name: production
     steps:
-      - name: Waiting for approval
-        run: echo "Waiting for manual approval to proceed with Terraform Apply..."
+      - run: echo "Waiting for manual approval..."
 
 # =========================
 # 5️⃣ Terraform Apply
@@ -125,31 +103,24 @@ jobs:
     runs-on: ubuntu-latest
     needs: approval
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Download Terraform Plan
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: terraform-plan
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
+      - run: terraform init
+      - run: terraform apply -auto-approve tfplan
 
 # =========================
 # 6️⃣ Ansible Configuration
@@ -159,29 +130,24 @@ jobs:
     runs-on: ubuntu-latest
     needs: terraform_apply
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Install Ansible
-        run: |
+      - run: |
           sudo apt update
           sudo apt install -y ansible
 
-      - name: Configure kubeconfig
-        run: |
+      - run: |
           aws eks update-kubeconfig \
             --region $AWS_REGION \
             --name demo-eks
 
-      - name: Run Ansible Playbook
-        run: |
+      - run: |
           ansible-playbook playbooks/install-addons.yml \
             -e "ansible_roles_path=playbooks/roles"
 
@@ -193,24 +159,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: ansible_config
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Configure kubeconfig
-        run: |
+      - run: |
           aws eks update-kubeconfig \
             --region $AWS_REGION \
             --name demo-eks
 
-      - name: Check Nodes
-        run: kubectl get nodes
-
-      - name: Check Pods
-        run: kubectl get pods -A
-
-      - name: Check Services
-        run: kubectl get svc -A
+      - run: kubectl get nodes
+      - run: kubectl get pods -A
+      - run: kubectl get svc -A
