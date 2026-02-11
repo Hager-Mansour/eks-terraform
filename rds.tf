@@ -80,13 +80,8 @@ module "rds" {
 
   db_name = "appdb"
 
-  username = jsondecode(
-    aws_secretsmanager_secret_version.db.secret_string
-  )["username"]
-
-  password = jsondecode(
-    aws_secretsmanager_secret_version.db.secret_string
-  )["password"]
+  username = "appuser"
+  password = random_password.db.result
 
   port = 5432
 
