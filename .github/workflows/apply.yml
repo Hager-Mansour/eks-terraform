@@ -8,11 +8,12 @@ on:
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write   # ⭐ مهم علشان OIDC
 
 env:
   AWS_REGION: us-east-1
   TF_VERSION: 1.5.0
+  ROLE_ARN: arn:aws:iam::596560793647:role/github-actions-role
 
 jobs:
 
@@ -34,7 +35,7 @@ jobs:
       - run: kubectl version --client
 
 # =========================
-# 2️⃣ Security Scan (Informational)
+# 2️⃣ Security Scan
 # =========================
   security_scan:
     name: Security Scan - Informational
@@ -60,10 +61,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ OIDC instead of Access Keys
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ env.ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: hashicorp/setup-terraform@v3
@@ -73,7 +74,6 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      # ⭐ مهم: من غير || true
       - name: Terraform Plan
         run: terraform plan -out=tfplan
 
@@ -105,10 +105,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ OIDC
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ env.ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: actions/download-artifact@v4
@@ -132,10 +132,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ OIDC
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ env.ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - run: |
@@ -161,8 +161,7 @@ jobs:
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ env.ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - run: |
