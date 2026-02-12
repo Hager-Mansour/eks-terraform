@@ -46,10 +46,13 @@ jobs:
 
       - run: pip install checkov
       - run: checkov -d . --download-external-modules true || true
-
-      - run: |
-          curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
-      - run: tfsec . || true
+      - name: Install tfsec
+        run: |
+          wget https://github.com/aquasecurity/tfsec/releases/latest/download/tfsec-linux-amd64 -O tfsec
+          chmod +x tfsec
+          sudo mv tfsec /usr/local/bin/
+      - name: Run tfsec
+        run: tfsec . || true
 
 # =========================
 # 3️⃣ Terraform Plan
