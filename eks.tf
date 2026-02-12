@@ -21,4 +21,32 @@ module "eks" {
       instance_types = ["t3.medium"]
     }
   }
+
+  access_entries = {
+    github = {
+      principal_arn = "arn:aws:iam::596560793647:role/github-actions-role"
+
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+
+    local_user = {
+      principal_arn = "arn:aws:iam::596560793647:user/terraform-github-user"
+
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
 }
