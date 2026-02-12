@@ -8,12 +8,21 @@ resource "random_password" "db" {
 }
 
 ############################################
+# Generate Random ID for Secret Name
+############################################
+
+resource "random_id" "this" {
+  byte_length = 4
+}
+
+############################################
 # Store DB Credentials in Secrets Manager
 ############################################
 
 resource "aws_secretsmanager_secret" "db" {
   name = "rds-db-credentials-${var.environment}-${random_id.this.hex}"
 
+  recovery_window_in_days = 0
 
   tags = {
     Name        = "rds-db-credentials-${var.environment}"
@@ -36,7 +45,7 @@ resource "aws_secretsmanager_secret_version" "db" {
 ############################################
 
 resource "aws_security_group" "rds" {
-  name        = "rds-sg"
+  name        = "rds-sg-${var.environment}"
   description = "Allow PostgreSQL access from EKS nodes"
   vpc_id      = module.vpc.vpc_id
 
@@ -56,7 +65,7 @@ resource "aws_security_group" "rds" {
   }
 
   tags = {
-    Name        = "rds-sg"
+    Name        = "rds-sg-${var.environment}"
     Environment = var.environment
     ManagedBy   = "terraform"
   }
@@ -79,8 +88,7 @@ module "rds" {
   instance_class    = "db.t3.micro"
   allocated_storage = 20
 
-  db_name = "appdb"
-
+  db_name  = "appdb"
   username = "appuser"
   password = random_password.db.result
 
@@ -112,7 +120,7 @@ module "rds" {
   ##########################################
 
   tags = {
-    Name        = "app-rds"
+    Name        = "app-rds-${var.environment}"
     Environment = var.environment
     ManagedBy   = "terraform"
   }
