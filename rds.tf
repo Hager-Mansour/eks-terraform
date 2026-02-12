@@ -12,7 +12,8 @@ resource "random_password" "db" {
 ############################################
 
 resource "aws_secretsmanager_secret" "db" {
-  name = "rds-db-credentials-${var.environment}"
+  name = "rds-db-credentials-${var.environment}-${random_id.this.hex}"
+
 
   tags = {
     Name        = "rds-db-credentials-${var.environment}"
