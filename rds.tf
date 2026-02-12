@@ -45,7 +45,7 @@ resource "aws_secretsmanager_secret_version" "db" {
 ############################################
 
 resource "aws_security_group" "rds" {
-  name        = "rds-sg-${var.environment}"
+  name        = "rds-sg"
   description = "Allow PostgreSQL access from EKS nodes"
   vpc_id      = module.vpc.vpc_id
 
