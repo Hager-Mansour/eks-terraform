@@ -13,14 +13,9 @@ module "eks" {
 
   enable_cluster_creator_admin_permissions = true
 
-  eks_managed_node_groups = {
-    default = {
-      desired_size   = 3
-      min_size       = 3
-      max_size       = 4
-      instance_types = ["t3.medium"]
-    }
-  }
+  #####################################
+  # ✅ Access Entries (IMPORTANT)
+  #####################################
 
   access_entries = {
     github = {
@@ -47,6 +42,19 @@ module "eks" {
           }
         }
       }
+    }
+  }
+
+  #####################################
+  # Node Group
+  #####################################
+
+  eks_managed_node_groups = {
+    default = {
+      desired_size   = 3
+      min_size       = 3
+      max_size       = 4
+      instance_types = ["t3.medium"]
     }
   }
 }
